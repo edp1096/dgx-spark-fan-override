@@ -7,7 +7,7 @@ __pycache__/
 .*.cmd
 Module.symvers
 modules.order
-*.deb
+# *.deb
 
-/dist/nvfanwatch
-/watcher/test_policy
+# /dist/nvfanwatch
+# /watcher/test_policy
