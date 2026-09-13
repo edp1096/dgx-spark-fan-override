@@ -6,7 +6,7 @@
  *
  *   /sys/bus/arm_ffa/devices/arm-ffa-17/fan
  *
- * Writing "max" or "auto" issues one OEM1 command 17 request. Requests are
+ * Writing "max", "auto", or a decimal RPM floor issues one OEM1 command 17 request. Requests are
  * serialized, and the interface remains available for subsequent state changes.
  */
 
@@ -42,6 +42,7 @@
 
 #define THERMAL_OUTER_COMMAND      0x07U
 #define THERMAL_SET_HIGH_OVERRIDE  0x05U
+#define TARGET_MIN_RPM             1890U
 #define TARGET_FULL_RPM            13500U
 #define TARGET_AUTOMATIC           0xffffU
 
@@ -53,6 +54,7 @@ enum nvfancontrol_fan_state {
 	NVFANCONTROL_READY = 0,
 	NVFANCONTROL_MAX,
 	NVFANCONTROL_AUTO,
+	NVFANCONTROL_RPM,
 	NVFANCONTROL_ERROR,
 };
 
@@ -61,6 +63,7 @@ struct nvfancontrol_state {
 	struct mutex request_lock;
 	enum nvfancontrol_fan_state fan_state;
 	int last_error;
+	u16 target_rpm;
 };
 
 static void restore_shared_page(struct device *dev, u8 *shm,
@@ -150,14 +153,8 @@ static int submit_fan_request(struct nvfancontrol_state *state, u16 target)
 	memcpy(shm, frame, sizeof(frame));
 	mb();
 
-	if (target == TARGET_FULL_RPM)
-		dev_warn(&fdev->dev,
-			 "starting MAX request: fixed EC frame %*ph\n",
-			 (int)sizeof(request), request);
-	else
-		dev_warn(&fdev->dev,
-			 "starting AUTO request: fixed EC frame %*ph\n",
-			 (int)sizeof(request), request);
+	dev_info(&fdev->dev, "starting override request: target=%u frame=%*ph\n",
+		 target, (int)sizeof(request), request);
 
 	payload[0] = ESPI_OEM_GENERIC_EMI;
 	start = ktime_get();
@@ -231,12 +228,8 @@ static int submit_fan_request(struct nvfancontrol_state *state, u16 target)
 		goto out_unmap;
 	}
 
-	if (target == TARGET_FULL_RPM)
-		dev_warn(&fdev->dev,
-			 "MAX ACKNOWLEDGED: EC accepted high override=13500 RPM; fan0 and fan1 policy outputs saturate at 100%%\n");
-	else
-		dev_warn(&fdev->dev,
-			 "AUTO ACKNOWLEDGED: EC accepted high override=0xffff; automatic thermal curve is restored\n");
+	dev_info(&fdev->dev, "EC acknowledged high override=%u (65535 means auto)\n",
+		 target);
 
 	result = 0;
 	restore_shared_page(&fdev->dev, shm, snapshot, &result);
@@ -260,6 +253,9 @@ static ssize_t fan_show(struct device *dev, struct device_attribute *attr,
 		break;
 	case NVFANCONTROL_AUTO:
 		length = sysfs_emit(buf, "auto\n");
+		break;
+	case NVFANCONTROL_RPM:
+		length = sysfs_emit(buf, "%u\n", state->target_rpm);
 		break;
 	case NVFANCONTROL_ERROR:
 		length = sysfs_emit(buf, "error %d\n", state->last_error);
@@ -289,8 +285,10 @@ static ssize_t fan_store(struct device *dev, struct device_attribute *attr,
 		target = TARGET_AUTOMATIC;
 		requested_state = NVFANCONTROL_AUTO;
 	} else {
-		dev_err(dev, "fan accepts only 'max' or 'auto'\n");
-		return -EINVAL;
+		ret = kstrtou16(buf, 10, &target);
+		if (ret || target < TARGET_MIN_RPM || target > TARGET_FULL_RPM)
+			return -EINVAL;
+		requested_state = NVFANCONTROL_RPM;
 	}
 
 	ret = mutex_lock_interruptible(&state->request_lock);
@@ -302,6 +300,7 @@ static ssize_t fan_store(struct device *dev, struct device_attribute *attr,
 		state->fan_state = NVFANCONTROL_ERROR;
 		state->last_error = ret;
 	} else {
+		state->target_rpm = target;
 		state->fan_state = requested_state;
 		state->last_error = 0;
 	}
@@ -352,7 +351,7 @@ static int fan_override_probe(struct ffa_device *fdev)
 	}
 
 	dev_info(&fdev->dev,
-		 "sysfs control ready: %s/fan accepts 'max' or 'auto'; module load issued no EC request\n",
+		 "sysfs control ready: %s/fan accepts 'max', 'auto', or 1890..13500 RPM; module load issued no EC request\n",
 		 dev_name(&fdev->dev));
 	return 0;
 }

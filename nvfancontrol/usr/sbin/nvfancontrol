@@ -9,6 +9,9 @@ module='nvfancontrol'
 
 usage() {
     printf 'Usage: sudo nvfancontrol {max|auto|status|unload}\n' >&2
+    printf '       sudo nvfancontrol --speed RPM\n' >&2
+    printf '  --speed  decimal common RPM floor, 1890..13500 inclusive; writes once and exits\n' >&2
+    printf '           This is a minimum request, not measured RPM or a temperature profile.\n' >&2
     printf '  max      load the module if needed, then write max to the fan sysfs interface\n' >&2
     printf '  auto     load the module if needed, then write auto to the fan sysfs interface\n' >&2
     printf '  status   show whether the module is loaded and read the fan interface\n' >&2
@@ -16,7 +19,17 @@ usage() {
 }
 
 case "${1:-}" in
+    --speed)
+        [ "$#" -eq 2 ] || { usage; exit 2; }
+        if [[ "$2" =~ ^[0-9]{4,5}$ ]] && (( 10#$2 >= 1890 && 10#$2 <= 13500 )); then
+            action="$((10#$2))"
+        else
+            printf 'Speed must be a decimal integer from 1890 to 13500.\n' >&2
+            exit 2
+        fi
+        ;;
     max|auto|status|unload)
+        [ "$#" -eq 1 ] || { usage; exit 2; }
         action="$1"
         ;;
     -h|--help)

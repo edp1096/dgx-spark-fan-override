@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.o
+*.ko
+*.mod
+*.mod.c
+.*.cmd
+Module.symvers
+modules.order
+*.deb
+
+/dist/nvfanwatch
+/watcher/test_policy
