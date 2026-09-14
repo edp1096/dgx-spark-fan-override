@@ -150,7 +150,9 @@ If the mode is 1, the ranges for both channels returned by command 1 are 14–10
 
 ### SoC eSPI Service OEM1 commands 1–18
 
-These are the outer-layer OEM1 debug/service commands for the FF-A secure partition, distinct from the EC inner commands listed in the table above. Only OEM1 command 17 encapsulates and executes the full EC EMI mailbox process. | OEM1 command | Function | Usage in this project |
+These are the outer-layer OEM1 debug/service commands for the FF-A secure partition, distinct from the EC inner commands listed in the table above. Only OEM1 command 17 encapsulates and executes the full EC EMI mailbox process.
+
+| OEM1 command | Function | Usage in this project |
 |---:|---|---|
 | `1` | Output POST code to I/O port `0x80` | Unused |
 | `2` | eSPI flash sector erase | Unused; destructive |
